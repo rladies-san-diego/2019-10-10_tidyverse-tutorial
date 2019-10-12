@@ -1,0 +1,353 @@
+---
+title: "Getting started with the tidyverse"
+output: html_notebook
+---
+
+# Notebook intro
+
+This is an [R Markdown](http://rmarkdown.rstudio.com) Notebook. 
+All the stuff written in the white part is just regular text. 
+
+The actual code goes into the grey chunks contained between shown below. When you execute code within the chunks present in the notebook, the results appear beneath the code. 
+
+It's good practice to use your first chunck to load the packages necessary for the analysis. Here is an example of how to install and load the tidyverse package. You only need to install a package once, but you need to load it every time you start a new session in R.
+```{r message=FALSE, warning=FALSE}
+#install.packages("tidyverse") the # makes this a comment. I already have the tidyverse installed, so the comment makes it so that this line will not run. If you don't have the tidyverse installed, remove the # and run this chunck. Don't forget to put the # back after, since you won't have to install the package more than once.
+
+library(tidyverse)
+
+library(readxl)
+
+```
+
+Try executing the chunk above by clicking the *Run* button within the chunk (green right arrow) or by placing your cursor inside it and pressing *Cmd+Shift+Enter*. 
+
+You can also install packages by clicking the Packages tab on the lower right and choosing Install.
+
+You can add a new chunk by clicking the *Insert Chunk* button on the toolbar or by pressing *Cmd+Option+I*.
+
+When you save the notebook, an HTML file containing the code and output will be saved alongside it (click the *Preview* button or press *Cmd+Shift+K* to preview the HTML file). 
+
+The preview shows you a rendered HTML copy of the contents of the editor. Consequently, *Preview* does not run any R code chunks. Instead, the output of the chunk when it was last run in the editor is displayed.
+
+Now let's get started with some actual data.
+
+# Importing data into R
+
+Most of the data you import into R is likely going to be a table of some sort. These can be excel files, csv, tab delimited txt, or even SPSS, SAS or Stata files.
+
+Since excel files are like what you see most frequently, we'll use that as an example. The import process is very similar for most files.
+
+You can import data by clicking the Import Dataset button on the top right. Ideally you'll still want to save the actual import function call for when you re-run the notebook in the future. Like this:
+```{r}
+alcohol <- read_excel("country alcohol consumption.xlsx")
+```
+
+The table we are using here is from the following article: https://fivethirtyeight.com/features/dear-mona-followup-where-do-people-drink-the-most-beer-wine-and-spirits/
+
+This looks at the consumption of different types of alcoholic beverages in different countries.
+
+We can also combine that data with some additional info from the world bank, like GDP and population data.
+
+Let's load that table too:
+```{r}
+pop_GDP <- read_excel("Population and GDP by Country.xlsx")
+```
+
+This table came from https://databank.worldbank.org/embed/Population-and-GDP-by-Country/id/29c4df41
+
+We can start by having a quick look at the data frame. This can be done in many different ways. Just by clicking on them or with a few different R functions:
+```{r}
+# view (this is what R runs when you click on the data frame on the top right)
+View(pop_GDP)
+# summary
+summary(pop_GDP)
+# structure
+str(pop_GDP)
+# glimpse
+glimpse(pop_GDP)
+# print
+pop_GDP
+```
+
+# Reorganizing your tables
+
+Let's do some clean up so the table variables are easier to work with. For example, we don't want any spaces in the variable names. It's also best if the variable names are short.
+
+We can start with the alcohol data frame. Let's change the names to remove the indication of servings, then let's get rid of the total_litres_of_pure_alcohol variable from the table.
+
+To rename variables we can use the rename function. You can use the select function to subset variables. If you ad a - to the variable name select can also be used to exclude columns.
+
+```{r}
+# Here is an example for rename. This is not actually saving the changes:
+rename(.data = alcohol, beer = beer_servings, spirit = spirit_servings, wine = wine_servings)
+
+# Now an example for selecting columns, also not saving the changes:
+select(.data = alcohol, -total_litres_of_pure_alcohol)
+
+# Here is how we can do the same thing using the pipe ( %>% ) to combine both steps - this overwrites the data frame.
+alcohol <- alcohol %>% 
+    rename(beer = beer_servings, spirit = spirit_servings, wine = wine_servings) %>% 
+    select(-total_litres_of_pure_alcohol)
+```
+
+Now let's fix up the pop_GDP table. Here I'd like to clean up the names and also change some of the variables. 
+Right now the variable names indicate a multiplier for the varible. How about instead of having the multiplier in the name we actually multiply them by those numbers? 
+We can do that easily using the mutate function.
+```{r}
+pop_GDP <- pop_GDP %>% 
+    mutate(GDP = GDP_bil * 10^9, 
+           GDP_capita = GDP_capita_thou * 10^3, 
+           Pop = Population_mil * 10^6)
+```
+
+One important note before we move ahead. The population of Monaco is actually less than 1 million, so it appeared as 0 on the table. We should replace that value with 38499, the actual population according to the World Bank.
+
+```{r}
+# Selecting columns with base R
+pop_GDP$`Country Name`
+pop_GDP[,"Pop"]
+# Selecting columns and rows with base R
+pop_GDP$Pop[2]
+pop_GDP[2, "Pop"]
+# Conditional row selection with base R
+pop_GDP$Pop[pop_GDP$`Country Name` == "Monaco"]
+pop_GDP[pop_GDP$`Country Name` == "Monaco", "Pop"]
+# Replacing values:
+pop_GDP$Pop[pop_GDP$`Country Name` == "Monaco"] <- 38499
+# OR
+pop_GDP[pop_GDP$`Country Name` == "Monaco", "Pop"] <- 38499
+```
+
+We can also use mutate to create new variables by using 2 other variables in some sort of calculation. For example, let's assume we didn't already have the GDP per capita. Since we have the GDP and the population we could quickly calculate that using the mutate function.
+```{r}
+pop_GDP <- pop_GDP %>% 
+    mutate(GDP_pc = GDP / Pop)
+```
+
+Here are the next steps I'd like to take to clean up the pop_GDP table:
+
+1.  Rename Country Name to country
+2.  Keep only the columns country, GDP, Pop and PDP_pc
+
+You can use rename and select, as before. 
+```{r}
+pop_GDP <- pop_GDP %>% 
+    rename(country = `Country Name`) %>% 
+    select(country, GDP, Pop, GDP_pc)
+```
+
+
+# Combining different datasets:
+
+Now let's combine the data from the 2 tables by country. Just from the size of the 2 tables we already know they don't actually have all of the same countries. This is something we need to consider when we put them together next.
+
+To combine 2 tables we can use the join functions. You can type `?dplyr::join` in the console below to see the help file. Have a look at the help on the right to get an idea of how this works.
+
+In this example we only want to keep the countries that are present in both tables. So, what join would you choose?
+
+```{r}
+pop_GDP_alcohol <- inner_join(x = alcohol, y = pop_GDP)
+```
+
+Tips: you can join tables by more than one variable using the argument `by = c("var1", "var2")`. You can also join tables if the variable you are using has different names in each table by using `by = c("var_tbl1" = "var_tbl2")`.
+
+# Tidy the data
+
+Before we move ahead with the data summaries, we should consider if this is actually a tidy table. The word “tidy” in the context of data science using R means that your data follows a standardized format. We will follow Hadley Wickham’s definition of tidy data (Wickham 2014).
+
+> A dataset is a collection of values, usually either numbers (if quantitative) or strings AKA text data (if qualitative/categorical). Values are organised in two ways. 
+> Every value belongs to a variable and an observation. 
+
+> A variable contains all values that measure the same underlying attribute (like height, temperature, duration) across units. 
+
+> An observation contains all values measured on the same unit (like a person, or a day, or a city) across attributes.
+
+In our example, we can see where our data could possibly be improved. 
+When we think of the variables originaly from the alcohol table, the same atribute (servings of alcohol) should be in the same variable. Then, we can have another variable indicating what type of alcohol are those servings.
+
+We can tidy the table using the gather function.
+```{r}
+pop_GDP_alc_td <- pop_GDP_alcohol %>% 
+    gather(key = dose_type, value = dose_number, wine, beer, spirit)
+```
+
+The reverse of gather is spread. Just as an example, we can use that to recapture the previous table:
+
+```{r}
+pop_GDP_alc_td %>% 
+    spread(key = dose_type, value = dose_number)
+```
+
+Now let's use mutate once more to create a new variable. I'd like to create a variable called continent that indicates Asia, Africa, Europe, America depending on the country name.
+
+In this case, we have mainly asian countries. So we can quickly do this by hand as follows:
+
+```{r}
+# To make things easy here are vectors with the countries we have for each continent:
+america <- "USA"
+africa <- c("Egypt","South Africa")
+europe <- c("Monaco", "United Kingdom")
+# all the rest is asia
+
+pop_GDP_alc_td <- pop_GDP_alc_td %>% 
+    mutate(continent = if_else(condition = country == "USA", true = "america", false = if_else(condition = country %in% africa, true = "africa", false = if_else(condition = country %in% europe, true = "europe", false = "asia"))))
+```
+
+
+# Filtering and summarizing your data
+
+We can create data summaries by grouping variables together. For example, let's say we want to know the following:
+
+1.  Number of alcohol doses consumed per continent
+2.  Number of doses for each type of beverage consumed per continent.
+
+In the 1st example we would group our data by continents, while in the second one we would group it by continent and dose_type.
+
+```{r}
+pop_GDP_alc_td %>% 
+    group_by(continent) %>% 
+    summarise(alc_dose_cont = sum(dose_number))
+```
+
+```{r}
+pop_GDP_alc_td %>% 
+    group_by(continent, dose_type) %>% 
+    summarise(alc_dose_cont = sum(dose_number))
+```
+
+You can also summarize multiple variables with different fucntions. Let's say we want to know the total doses of alcohol consumed but the average GDP per capita.
+
+```{r}
+pop_GDP_alc_td %>% 
+    group_by(continent) %>% 
+    summarize(tt_alcohol = sum(dose_number), avg_GDP_pc = mean(GDP_pc))
+```
+
+We can also keep using the pipe to sort the table, by consumed doses of alcohol for example:
+
+```{r}
+pop_GDP_alc_td %>% 
+    group_by(continent) %>% 
+    summarize(tt_alcohol = sum(dose_number), avg_GDP_pc = mean(GDP_pc)) %>% 
+    arrange(-tt_alcohol)
+```
+
+Try a few more examples of groupind and summarization for yourself.
+
+Up next we can filter out some of the observations. Let's say we only want to keep the countries from asia:
+```{r}
+pop_GDP_alc_td %>% 
+    filter(continent == "asia")
+```
+
+Or the info on wine consumption for all continents other than asia:
+```{r}
+pop_GDP_alc_td %>% 
+    filter(dose_type == "wine" & continent != "asia")
+```
+
+
+# Data Visualization
+
+Here is an example of how we could plot the doses of alcohol consumed by the GDP per capital of the country.
+
+```{r}
+pop_GDP_alc_td %>% 
+    ggplot(aes(x = dose_number, y = GDP_pc)) +
+    geom_point()
+```
+
+We can also color that by continent:
+```{r}
+pop_GDP_alc_td %>% 
+    ggplot(aes(x = dose_number, y = GDP_pc, color = continent)) +
+    geom_point()
+```
+
+Or we could separate the plot based on the type of beverage:
+
+```{r}
+pop_GDP_alc_td %>% 
+    ggplot(aes(x = dose_number, y = GDP_pc, color = continent)) +
+    geom_point() +
+    facet_wrap(~ dose_type)
+```
+
+We can also separate based on beverage type and continents:
+
+```{r}
+pop_GDP_alc_td %>% 
+    ggplot(aes(x = dose_number, y = GDP_pc, color = continent)) +
+    geom_point() +
+    facet_wrap(continent ~ dose_type)
+
+#Sometimes facet_grid will look nicer in these case.
+pop_GDP_alc_td %>% 
+    ggplot(aes(x = dose_number, y = GDP_pc, color = continent)) +
+    geom_point() +
+    facet_grid(continent ~ dose_type)
+```
+
+You can make a tons of other plots with ggplot2. Here are a few things to try:
+
+1. Boxplot of the doses of alcohol consumed by type
+    - facet by continent
+2. Histogram of the GDP of countries
+    - with a log scale on the x-axis
+3. The GDP by the GDP per capita
+    - colored by doses of alcohol consumed
+    - in log2 scale on the x and y axis
+    - with the x-axis labels turned by 90 degrees and centered on the tick mark
+4. The population by the GDP per capita
+    - with a line fit (linear model)
+    - in a black and white theme
+5. The population by doses of alcohol consumed
+    - colored by dose type
+    - with line fits for each type of alcohol
+    - without the confidence interval around smooth
+    - with new labels for both axis and the legend
+    - with a title and a caption for the plot
+
+
+```{r}
+pop_GDP_alc_td %>% 
+    ggplot(aes(x = dose_type, y = dose_number)) +
+    geom_boxplot() +
+    facet_wrap(~ continent)
+```
+
+```{r}
+pop_GDP_alc_td %>% 
+    ggplot(aes(x = GDP)) +
+    geom_histogram() +
+    scale_x_continuous(trans = "log")
+```
+
+```{r}
+pop_GDP_alc_td %>% 
+    ggplot(aes(x = GDP, y = GDP_pc, color = dose_number)) +
+    geom_point() +
+    coord_trans(x="log2", y="log2") +
+    theme(axis.text.x = element_text(angle = 90, vjust = 0.5, hjust = 1))
+
+```
+
+```{r}
+pop_GDP_alc_td %>% 
+    ggplot(aes(x = Pop, y = GDP_pc)) +
+    geom_point() +
+    geom_smooth(method = "lm") + 
+    theme_bw()
+
+```
+
+```{r}
+pop_GDP_alc_td %>% 
+    ggplot(aes(x = Pop, y = dose_number, color = dose_type)) +
+    geom_point() +
+    geom_smooth(method = "lm", se = F) + 
+    labs(x = "Population", y = "Number of doses of alcohol consumed yearly", color = "Alcohol type", title = "Alcohol consumption by population for some countries", caption = "Data from world bank and FiveThirtyEight")
+    
+
+```
